@@ -1797,6 +1797,13 @@ int boot_linux_from_flash(void)
 				return -1;
 			}
 
+			/* Its Error if, dt_hdr_size (table->num_entries * dt_entry size + Dev_Tree Header)
+			goes beyound hdr->dt_size*/
+			if (dt_hdr_size > ROUND_TO_PAGE(dt_size, hdr->page_size)) {
+				dprintf(CRITICAL, "ERROR: Invalid Device Tree size \n");
+				return -1;
+			}
+
 			/* Find index of device tree within device tree table */
 			if(dev_tree_get_entry_info(table, &dt_entry) != 0){
 				dprintf(CRITICAL, "ERROR: Getting device tree address failed\n");
@@ -3043,6 +3050,7 @@ void cmd_flash_mmc_sparse_img(const char *arg, void *data, unsigned sz)
 	uint64_t chunk_data_sz;
 	uint32_t *fill_buf = NULL;
 	uint32_t fill_val;
+	uint32_t blk_sz_actual = 0;
 	sparse_header_t *sparse_header;
 	chunk_header_t *chunk_header;
 	uint32_t total_blocks = 0;
@@ -3187,7 +3195,15 @@ void cmd_flash_mmc_sparse_img(const char *arg, void *data, unsigned sz)
 				return;
 			}
 
-			fill_buf = (uint32_t *)memalign(CACHE_LINE, ROUNDUP(sparse_header->blk_sz, CACHE_LINE));
+			blk_sz_actual = ROUNDUP(sparse_header->blk_sz, CACHE_LINE);
+			/* Integer overflow detected */
+			if (blk_sz_actual < sparse_header->blk_sz)
+			{
+				fastboot_fail("Invalid block size");
+				return;
+			}
+
+			fill_buf = (uint32_t *)memalign(CACHE_LINE, blk_sz_actual);
 			if (!fill_buf)
 			{
 				fastboot_fail("Malloc failed for: CHUNK_TYPE_FILL");
@@ -3581,7 +3597,7 @@ void cmd_set_active(const char *arg, void *data, unsigned sz)
 	if (arg)
 	{
 		p = strtok_r((char *)arg, ":", &sp);
-		if (*p)
+		if (p)
 		{
 			current_active_slot = partition_find_active_slot();
 
@@ -3590,7 +3606,8 @@ void cmd_set_active(const char *arg, void *data, unsigned sz)
 			current_slot_suffix = strtok_r((char *)current_slot_suffix,
 							(char *)suffix_delimiter, &sp);
 
-			if (!strncmp(p, current_slot_suffix, sizeof(current_slot_suffix)))
+			if (current_slot_suffix &&
+				!strncmp(p, current_slot_suffix, strlen(current_slot_suffix)))
 			{
 				fastboot_okay("Slot already set active");
 				return;
@@ -3602,7 +3619,8 @@ void cmd_set_active(const char *arg, void *data, unsigned sz)
 					current_slot_suffix = SUFFIX_SLOT(i);
 					current_slot_suffix = strtok_r((char *)current_slot_suffix,
 									(char *)suffix_delimiter, &sp);
-					if (!strncmp(p, current_slot_suffix, sizeof(current_slot_suffix)))
+					if (current_slot_suffix &&
+						!strncmp(p, current_slot_suffix, strlen(current_slot_suffix)))
 					{
 						partition_switch_slots(current_active_slot, i);
 						publish_getvar_multislot_vars();
