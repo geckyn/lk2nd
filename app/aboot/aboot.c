@@ -102,6 +102,7 @@ extern int get_target_boot_params(const char *cmdline, const char *part,
 				  char **buf);
 
 void *info_buf;
+void write_device_info(device_info *dev);
 void write_device_info_mmc(device_info *dev);
 void write_device_info_flash(device_info *dev);
 static int aboot_save_boot_hash_mmc(uint32_t image_addr, uint32_t image_size);
@@ -110,6 +111,7 @@ static inline uint64_t validate_partition_size();
 bool pwr_key_is_pressed = false;
 static bool is_systemd_present=false;
 static void publish_getvar_multislot_vars();
+static bool critical_flash_allowed(const char * entry);
 /* fastboot command function pointer */
 typedef void (*fastboot_cmd_fn) (const char *, void *, unsigned);
 
@@ -154,6 +156,12 @@ struct fastboot_cmd_desc {
 //String used to determine if the boot image has
 //a uncompressed kernel + appended dtb
 #define PATCHED_KERNEL_MAGIC "UNCOMPRESSED_IMG"
+
+/* commands that required to check allowed or not */
+#define CMD_FLASH 1
+#define CMD_ERASE 2
+#define CMD_BOOT  3
+#define CMD_META  4
 
 #if USE_BOOTDEV_CMDLINE
 static const char *emmc_cmdline = " androidboot.bootdevice=";
@@ -294,6 +302,71 @@ extern int emmc_recovery_init(void);
 
 #if NO_KEYPAD_DRIVER
 extern int fastboot_trigger(void);
+#endif
+
+#if VERIFIED_BOOT
+static bool is_cmd_fastboot_allowed(const char *arg, int cmd)
+{
+	if (target_build_variant_user()) {
+		switch (cmd) {
+		case CMD_FLASH:
+			/* if device is locked:
+			 * common partition will not allow to be flashed
+			 * critical partition will allow to flash image.
+			 */
+			if (!device.is_unlocked &&
+				!critical_flash_allowed(arg)) {
+				fastboot_fail("Partition flashing is not allowed");
+				return false;
+			}
+
+			/* if device critical is locked:
+			 * common partition will allow to be flashed
+			 * critical partition will not allow to flash image.
+			 */
+			if (VB_V2 == target_get_vb_version() &&
+				!device.is_unlock_critical &&
+				critical_flash_allowed(arg)) {
+				fastboot_fail("Critical partition flashing is not allowed");
+				return false;
+			}
+			break;
+		case CMD_META:
+			if (!device.is_unlocked) {
+				fastboot_fail("Device is locked, meta image flashing is not allowed");
+				return false;
+			}
+
+			if (VB_V2 == target_get_vb_version() &&
+				!device.is_unlock_critical)
+			{
+				fastboot_fail("Device is critical locked, Meta image flashing is not allowed");
+				return false;
+			}
+			break;
+		case CMD_ERASE:
+		case CMD_BOOT:
+			if (!device.is_unlocked)
+				return false;
+			default:
+				break;
+		}
+	}
+
+	return true;
+}
+#else
+static bool is_cmd_fastboot_allowed(const char *arg, int cmd)
+{
+	if (is_vb_le_enabled()) {
+		if (!device.is_unlocked) {
+			fastboot_fail("device is in locked state, this command is not allowed");
+			return false;
+		}
+	}
+
+	return true;
+}
 #endif
 
 static void update_ker_tags_rdisk_addr(struct boot_img_hdr *hdr, bool is_arm64)
@@ -1087,7 +1160,11 @@ static void verify_signed_bootimg(uint32_t bootimg_addr, uint32_t bootimg_size)
 #if !VERIFIED_BOOT
 	if(device.is_tampered)
 	{
-		write_device_info_mmc(&device);
+		if (is_vb_le_enabled() && is_secure_boot_enable()) {
+			dprintf(CRITICAL, "Device is tampered. Asserting..\n");
+			ASSERT(0);
+		}
+		write_device_info(&device);
 	#ifdef TZ_TAMPER_FUSE
 		set_tamper_fuse_cmd();
 	#endif
@@ -2202,6 +2279,10 @@ void read_device_info_flash(device_info *dev)
 
 void write_device_info(device_info *dev)
 {
+	/* do not write devinfo in LE based VB case with secure boot enabled. */
+	if (is_vb_le_enabled() && is_secure_boot_enable())
+		return;
+
 	if(target_is_emmc_boot())
 	{
 		struct device_info *info = memalign(PAGE_SIZE, ROUNDUP(BOOT_IMG_MAX_PAGE_SIZE, PAGE_SIZE));
@@ -2234,6 +2315,10 @@ void write_device_info(device_info *dev)
 
 void read_device_info(device_info *dev)
 {
+	/* do not read devinfo in LE based VB case with secure boot enabled. */
+	if (is_vb_le_enabled() && is_secure_boot_enable())
+		return;
+
 	if(target_is_emmc_boot())
 	{
 		struct device_info *info = memalign(PAGE_SIZE, ROUNDUP(BOOT_IMG_MAX_PAGE_SIZE, PAGE_SIZE));
@@ -2366,14 +2451,18 @@ static void set_device_unlock(int type, bool status)
 
 	set_device_unlock_value(type, status);
 
-	/* wipe data */
-	struct recovery_message msg;
-	memset(&msg, 0, sizeof(msg));
-	snprintf(msg.recovery, sizeof(msg.recovery), "recovery\n--wipe_data");
-	write_misc(0, &msg, sizeof(msg));
+	/* Don't wipe data for LE targets when LE based VB enabled. */
+	if (is_vb_le_enabled()) {
+		fastboot_okay("");
+	} else {
+		struct recovery_message msg;
+		memset(&msg, 0, sizeof(msg));
+		snprintf(msg.recovery, sizeof(msg.recovery), "recovery\n--wipe_data");
+		write_misc(0, &msg, sizeof(msg));
 
-	fastboot_okay("");
-	reboot_device(RECOVERY_MODE);
+		fastboot_okay("");
+		reboot_device(RECOVERY_MODE);
+	}
 }
 
 static bool critical_flash_allowed(const char * entry)
@@ -2514,13 +2603,11 @@ void cmd_boot(const char *arg, void *data, unsigned sz)
 	exit_menu_keys_detection();
 #endif
 
-#if VERIFIED_BOOT
-	if(target_build_variant_user() && !device.is_unlocked)
+	if(!is_cmd_fastboot_allowed(arg, CMD_BOOT))
 	{
 		fastboot_fail("unlock device to use this command");
 		goto boot_failed;
 	}
-#endif
 
 	if (sz < sizeof(hdr)) {
 		fastboot_fail("invalid bootimage header");
@@ -2838,16 +2925,10 @@ void cmd_erase_mmc(const char *arg, void *data, unsigned sz)
 
 void cmd_erase(const char *arg, void *data, unsigned sz)
 {
-#if VERIFIED_BOOT
-	if (target_build_variant_user())
-	{
-		if(!device.is_unlocked)
-		{
-			fastboot_fail("device is locked. Cannot erase");
-			return;
-		}
+	if (!is_cmd_fastboot_allowed(arg, CMD_ERASE)) {
+		fastboot_fail("device is locked. Cannot erase");
+		return;
 	}
-#endif
 
 	if(target_is_emmc_boot())
 		cmd_erase_mmc(arg, data, sz);
@@ -2996,21 +3077,8 @@ void cmd_flash_meta_img(const char *arg, void *data, unsigned sz)
 	 * which with "any" name other than bootloader. Because it maybe
 	 * a meta package of all partitions.
 	 */
-#if VERIFIED_BOOT
-	if (target_build_variant_user()) {
-		if (!device.is_unlocked) {
-			fastboot_fail("Device is locked, meta image flashing is not allowed");
-			return;
-		}
-
-		if (VB_V2 == target_get_vb_version() &&
-			!device.is_unlock_critical) 
-		{
-			fastboot_fail("Device is critical locked, Meta image flashing is not allowed");
-			return;
-		}
-	}
-#endif
+	if (!is_cmd_fastboot_allowed(arg, CMD_META))
+		return;
 
 	meta_header = (meta_header_t*) data;
 	if( data_end < ((uintptr_t)data + meta_header->img_hdr_sz))
@@ -3399,30 +3467,8 @@ void cmd_flash_mmc(const char *arg, void *data, unsigned sz)
 	}
 #endif /* SSD_ENABLE */
 
-#if VERIFIED_BOOT
-	if (target_build_variant_user())
-	{
-		/* if device is locked:
-		 * common partition will not allow to be flashed
-		 * critical partition will allow to flash image.
-		 */
-		if(!device.is_unlocked && !critical_flash_allowed(arg)) {
-			fastboot_fail("Partition flashing is not allowed");
-			return;
-		}
-
-		/* if device critical is locked:
-		 * common partition will allow to be flashed
-		 * critical partition will not allow to flash image.
-		 */
-		if (VB_V2 == target_get_vb_version() &&
-			!device.is_unlock_critical &&
-			critical_flash_allowed(arg)) {
-				fastboot_fail("Critical partition flashing is not allowed");
-				return;
-		}
-	}
-#endif
+	if (!is_cmd_fastboot_allowed(arg, CMD_FLASH))
+		return;
 
 	sparse_header = (sparse_header_t *) data;
 	meta_header = (meta_header_t *) data;
@@ -3804,12 +3850,22 @@ void cmd_flashing_get_unlock_ability(const char *arg, void *data, unsigned sz)
 
 void cmd_flashing_lock_critical(const char *arg, void *data, unsigned sz)
 {
-	set_device_unlock(UNLOCK_CRITICAL, FALSE);
+	if (is_vb_le_enabled()) {
+		fastboot_fail("\tlock critical is not supported");
+		return;
+	} else {
+		set_device_unlock(UNLOCK_CRITICAL, FALSE);
+	}
 }
 
 void cmd_flashing_unlock_critical(const char *arg, void *data, unsigned sz)
 {
-	set_device_unlock(UNLOCK_CRITICAL, TRUE);
+	if (is_vb_le_enabled()) {
+		fastboot_fail("unlock critical is not supported");
+		return;
+	} else {
+		set_device_unlock(UNLOCK_CRITICAL, TRUE);
+	}
 }
 
 void cmd_preflash(const char *arg, void *data, unsigned sz)
