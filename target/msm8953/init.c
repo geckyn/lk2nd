@@ -59,6 +59,7 @@
 #include <qmp_phy.h>
 #include <qusb2_phy.h>
 #include "target/display.h"
+#include "recovery.h"
 
 #if LONG_PRESS_POWER_ON
 #include <shutdown_detect.h>
@@ -79,6 +80,7 @@
 
 #if VERITY_LE
 #define EXT4_CMDLINE  " rootfstype=ext4 root=/dev/dm-0 dm=\"system none ro,0 1 android-verity /dev/mmcblk0p"
+#define EXT4_CMDLINE_RECOVERY  " rootfstype=ext4 root=/dev/mmcblk0p"
 #else
 #define EXT4_CMDLINE  " rootfstype=ext4 root=/dev/mmcblk0p"
 #endif
@@ -129,7 +131,10 @@ int get_target_boot_params(const char *cmdline, const char *part, char **buf)
 	{
 		if (target_is_emmc_boot()) {
 #if VERITY_LE
-			buflen = strlen(EXT4_CMDLINE) + sizeof(int) +3; /* extra 2 bytes for "\"" to be added at EOL */
+			if(boot_into_recovery == true)
+				buflen = strlen(EXT4_CMDLINE_RECOVERY) + sizeof(int) +1;
+			else
+				buflen = strlen(EXT4_CMDLINE) + sizeof(int) +3; /* extra 2 bytes for "\"" to be added at EOL */
 #else
 			buflen = strlen(EXT4_CMDLINE) + sizeof(int) +1;
 #endif
@@ -147,7 +152,10 @@ int get_target_boot_params(const char *cmdline, const char *part, char **buf)
 				return -1;
 			}
 #if VERITY_LE
-			snprintf(*buf, buflen, EXT4_CMDLINE"%d\"", system_ptn_index); /* add "\"" at EOL */
+			if(boot_into_recovery == true)
+				snprintf(*buf, buflen, EXT4_CMDLINE_RECOVERY"%d", system_ptn_index);
+			else
+				snprintf(*buf, buflen, EXT4_CMDLINE"%d\"", system_ptn_index); /* add "\"" at EOL */
 #else
 			snprintf(*buf, buflen, EXT4_CMDLINE"%d", system_ptn_index);
 #endif
