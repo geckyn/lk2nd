@@ -59,6 +59,7 @@
 #include <qmp_phy.h>
 #include <qusb2_phy.h>
 #include "target/display.h"
+#include "recovery.h"
 
 #if LONG_PRESS_POWER_ON
 #include <shutdown_detect.h>
@@ -76,7 +77,13 @@
 #define FASTBOOT_MODE           0x77665500
 #define RECOVERY_MODE           0x77665502
 #define PON_SOFT_RB_SPARE       0x88F
+
+#if VERITY_LE
+#define EXT4_CMDLINE  " rootfstype=ext4 root=/dev/dm-0 dm=\"system none ro,0 1 android-verity /dev/mmcblk0p"
+#define EXT4_CMDLINE_RECOVERY  " rootfstype=ext4 root=/dev/mmcblk0p"
+#else
 #define EXT4_CMDLINE  " rootfstype=ext4 root=/dev/mmcblk0p"
+#endif
 
 #define CE1_INSTANCE            1
 #define CE_EE                   1
@@ -123,7 +130,14 @@ int get_target_boot_params(const char *cmdline, const char *part, char **buf)
 	if (!strstr(cmdline, "root=/dev/ram")) /* This check is to handle kdev boot */
 	{
 		if (target_is_emmc_boot()) {
+#if VERITY_LE
+			if(boot_into_recovery == true)
+				buflen = strlen(EXT4_CMDLINE_RECOVERY) + sizeof(int) +1;
+			else
+				buflen = strlen(EXT4_CMDLINE) + sizeof(int) +3; /* extra 2 bytes for "\"" to be added at EOL */
+#else
 			buflen = strlen(EXT4_CMDLINE) + sizeof(int) +1;
+#endif
 			*buf = (char *)malloc(buflen);
 			if(!(*buf)) {
 				dprintf(CRITICAL,"Unable to allocate memory for boot params\n");
@@ -137,7 +151,14 @@ int get_target_boot_params(const char *cmdline, const char *part, char **buf)
 				free(*buf);
 				return -1;
 			}
+#if VERITY_LE
+			if(boot_into_recovery == true)
+				snprintf(*buf, buflen, EXT4_CMDLINE_RECOVERY"%d", system_ptn_index);
+			else
+				snprintf(*buf, buflen, EXT4_CMDLINE"%d\"", system_ptn_index); /* add "\"" at EOL */
+#else
 			snprintf(*buf, buflen, EXT4_CMDLINE"%d", system_ptn_index);
+#endif
 			ret = 0;
 		}
 	}

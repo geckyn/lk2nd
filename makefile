@@ -123,6 +123,10 @@ ifeq ($(VERIFIED_BOOT_LE),1)
   endif
 endif
 
+ifeq ($(VERITY_LE),1)
+ DEFINES += VERITY_LE=1
+endif
+
 ifeq ($(OSVERSION_IN_BOOTIMAGE),1)
  DEFINES += OSVERSION_IN_BOOTIMAGE=1
 endif
