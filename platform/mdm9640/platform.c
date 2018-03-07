@@ -167,6 +167,7 @@ bool platform_is_mdm9650()
 		case MDM9655:
 		case MDM9250:
 		case MDM9255:
+		case MDM9150:
 				ret = true;
 				break;
 		default:
