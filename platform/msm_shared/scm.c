@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -70,12 +70,10 @@ static bool scm_initialized;
 
 bool is_scm_armv8_support()
 {
-#if !NO_SCM_V8_SUPPORT
 	if (!scm_initialized)
 	{
 		scm_init();
 	}
-#endif
 
 	return scm_arm_support;
 }

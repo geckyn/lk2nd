@@ -184,6 +184,7 @@ int platform_is_msm8953()
 	{
 		case MSM8953:
 		case APQ8053:
+		case SDM450:
 		case SDA450:
 			return 1;
 			break;
