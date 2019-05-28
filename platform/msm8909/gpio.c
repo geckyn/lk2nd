@@ -31,6 +31,10 @@
 #include <platform/iomap.h>
 #include <platform/gpio.h>
 #include <blsp_qup.h>
+#if DSI2DPI_TC358762
+#include <smem.h>
+#include <board.h>
+#endif
 
 void gpio_tlmm_config(uint32_t gpio, uint8_t func,
 			uint8_t dir, uint8_t pull,
@@ -70,6 +74,10 @@ uint32_t gpio_status(uint32_t gpio)
 
 void gpio_config_blsp_i2c(uint8_t blsp_id, uint8_t qup_id)
 {
+#if DSI2DPI_TC358762
+	uint32_t hw_id = board_hardware_id();
+	uint32_t hw_subtype = board_hardware_subtype();
+#endif
 	if(blsp_id == BLSP_ID_1) {
 		switch (qup_id) {
 			case QUP_ID_1:
@@ -100,13 +108,28 @@ void gpio_config_blsp_i2c(uint8_t blsp_id, uint8_t qup_id)
 					GPIO_8MA, GPIO_DISABLE);
 			break;
 			case QUP_ID_4:
-				/* configure I2C SDA gpio */
-				gpio_tlmm_config(14, 3, GPIO_OUTPUT, GPIO_NO_PULL,
-					GPIO_8MA, GPIO_DISABLE);
+#if DSI2DPI_TC358762
+				if ((HW_PLATFORM_SUBTYPE_LR3001 == hw_subtype)
+					&& (HW_PLATFORM_MTP == hw_id)) {
+					/* configure I2C SDA gpio */
+					gpio_tlmm_config(18, 2, GPIO_OUTPUT, GPIO_NO_PULL,
+							GPIO_2MA, GPIO_DISABLE);
 
-				/* configure I2C SCL gpio */
-				gpio_tlmm_config(15, 3, GPIO_OUTPUT, GPIO_NO_PULL,
-					GPIO_8MA, GPIO_DISABLE);
+					/* configure I2C SCL gpio */
+					gpio_tlmm_config(19, 2, GPIO_OUTPUT, GPIO_NO_PULL,
+							GPIO_2MA, GPIO_DISABLE);
+				} else {
+#endif
+					/* configure I2C SDA gpio */
+					gpio_tlmm_config(14, 3, GPIO_OUTPUT, GPIO_NO_PULL,
+							GPIO_8MA, GPIO_DISABLE);
+					/* configure I2C SCL gpio */
+
+					gpio_tlmm_config(15, 3, GPIO_OUTPUT, GPIO_NO_PULL,
+							GPIO_8MA, GPIO_DISABLE);
+#if DSI2DPI_TC358762
+				}
+#endif
 			break;
 			case QUP_ID_5:
 				/* configure I2C SDA gpio */
