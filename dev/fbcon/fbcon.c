@@ -42,6 +42,11 @@
 
 #include "font5x12.h"
 
+#if DSI2DPI_TC358762
+#include <smem.h>
+#include <board.h>
+#endif
+
 struct pos {
 	int x;
 	int y;
@@ -390,9 +395,9 @@ void fbcon_setup(struct fbcon_config *_config)
 	case FB_FORMAT_RGB565:
 		fb_color_formats = fb_color_formats_555;
 		break;
-        case FB_FORMAT_RGB888:
+	case FB_FORMAT_RGB888:
 		fb_color_formats = fb_color_formats_888;
-                break;
+		break;
 	default:
 		dprintf(CRITICAL, "unknown framebuffer pixel format\n");
 		ASSERT(0);
@@ -491,6 +496,22 @@ void display_default_image_on_screen(void)
 	char *image = NULL;
 #endif
 
+#if DSI2DPI_TC358762
+	uint32_t hw_id = board_hardware_id();
+	uint32_t hw_subtype = board_hardware_subtype();
+#endif
+
+	uint32_t splash_image_height = SPLASH_IMAGE_HEIGHT;
+	uint32_t splash_image_width = SPLASH_IMAGE_WIDTH;
+
+#if DSI2DPI_TC358762
+	if ((HW_PLATFORM_SUBTYPE_LR3001 == hw_subtype) &&
+			(HW_PLATFORM_MTP == hw_id)) {
+		splash_image_height = SPLASH_IMAGE_HEIGHT_FP;
+		splash_image_width = SPLASH_IMAGE_WIDTH_FP;
+	}
+#endif
+
 	if (!config) {
 		dprintf(CRITICAL,"NULL configuration, image cannot be displayed\n");
 		return;
@@ -501,8 +522,8 @@ void display_default_image_on_screen(void)
 	total_x = config->width;
 	total_y = config->height;
 	bytes_per_bpp = ((config->bpp) / 8);
-	image_base = ((((total_y/2) - (SPLASH_IMAGE_HEIGHT / 2) - 1) *
-			(config->width)) + (total_x/2 - (SPLASH_IMAGE_WIDTH / 2)));
+	image_base = ((((total_y/2) - (splash_image_height / 2) - 1) *
+				(config->width)) + (total_x/2 - (splash_image_width / 2)));
 
 #if DISPLAY_TYPE_MIPI
 #if ENABLE_WBC
@@ -510,14 +531,29 @@ void display_default_image_on_screen(void)
 #else
 	image = imageBuffer_rgb888;
 #endif
-
-	if (bytes_per_bpp == 3) {
-		for (i = 0; i < SPLASH_IMAGE_HEIGHT; i++) {
-			memcpy (config->base + ((image_base + (i * (config->width))) * bytes_per_bpp),
-			image + (i * SPLASH_IMAGE_WIDTH * bytes_per_bpp),
-			SPLASH_IMAGE_WIDTH * bytes_per_bpp);
+#if DSI2DPI_TC358762
+	if ((HW_PLATFORM_SUBTYPE_LR3001 == hw_subtype) &&
+			(HW_PLATFORM_MTP == hw_id)) {
+		image = imageBuffer_FP;
+		if (bytes_per_bpp == 3 || bytes_per_bpp == 2) {
+			for (i = 0; i < splash_image_height ; i++) {
+				memcpy(config->base + ((image_base + (i * (config->width))) * bytes_per_bpp),
+						image + (i * splash_image_width * bytes_per_bpp),
+						splash_image_width * bytes_per_bpp);
+			}
 		}
+	} else {
+#endif
+		if (bytes_per_bpp == 3) {
+			for (i = 0; i < splash_image_height; i++) {
+				memcpy(config->base + ((image_base + (i * (config->width))) * bytes_per_bpp),
+						image + (i * splash_image_width * bytes_per_bpp),
+						splash_image_width * bytes_per_bpp);
+			}
+		}
+#if DSI2DPI_TC358762
 	}
+#endif
 	fbcon_flush();
 #if DISPLAY_MIPI_PANEL_NOVATEK_BLUE
 	if(is_cmd_mode_enabled())
@@ -527,10 +563,10 @@ void display_default_image_on_screen(void)
 #else
 
 	if (bytes_per_bpp == 2) {
-		for (i = 0; i < SPLASH_IMAGE_HEIGHT; i++) {
+		for (i = 0; i < splash_image_height; i++) {
 			memcpy (config->base + ((image_base + (i * (config->width))) * bytes_per_bpp),
-			imageBuffer + (i * SPLASH_IMAGE_WIDTH * bytes_per_bpp),
-			SPLASH_IMAGE_WIDTH * bytes_per_bpp);
+					imageBuffer + (i * splash_image_width * bytes_per_bpp),
+					splash_image_width * bytes_per_bpp);
 		}
 	}
 	fbcon_flush();
@@ -541,14 +577,27 @@ void display_default_image_on_screen(void)
 void display_image_on_screen(void)
 {
 #if DISPLAY_TYPE_MIPI
+#if DSI2DPI_TC358762
+	uint32_t hw_id = board_hardware_id();
+	uint32_t hw_subtype = board_hardware_subtype();
+#endif
 	int fetch_image_from_partition();
 
-	if (fetch_image_from_partition() < 0) {
+#if DSI2DPI_TC358762
+	if ((HW_PLATFORM_SUBTYPE_LR3001 == hw_subtype) &&
+			(HW_PLATFORM_MTP == hw_id)) {
 		display_default_image_on_screen();
 	} else {
-		/* data has been put into the right place */
-		fbcon_flush();
+#endif
+		if (fetch_image_from_partition() < 0) {
+			display_default_image_on_screen();
+		} else {
+			/* data has been put into the right place */
+			fbcon_flush();
+		}
+#if DSI2DPI_TC358762
 	}
+#endif
 #else
 	display_default_image_on_screen();
 #endif
