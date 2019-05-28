@@ -88,6 +88,12 @@ int mdp_dsi_video_config(struct msm_panel_info *pinfo,
 	int mdp_rev = mdp_get_revision();
 	unsigned long long panic_config = mdp3_get_panic_lut_cfg(pinfo->xres);
 
+#if DSI2DPI_TC358762
+	unsigned short pack_pattern = 0;
+	uint32_t hw_id = board_hardware_id();
+	uint32_t hw_subtype = board_hardware_subtype();
+#endif
+
 	if (pinfo == NULL)
 		return ERR_INVALID_ARGS;
 
@@ -121,7 +127,23 @@ int mdp_dsi_video_config(struct msm_panel_info *pinfo,
 		(panic_config & 0xFFFF), ((panic_config >> 16) & 0xFFFF),
 		((panic_config >> 32) & 0xFFFF));
 	// ------------- programming MDP_DMA_P_CONFIG ---------------------
-	writel(0x1800bf, MDP_DMA_P_CONFIG);	// rgb888
+#if DSI2DPI_TC358762
+	if ((HW_PLATFORM_SUBTYPE_LR3001 == hw_subtype) &&
+			(HW_PLATFORM_MTP == hw_id)) {
+		/* For RGB565 set 0x21800BF to MDP_DMA_P_CONFIG */
+		dprintf(INFO, "%s MDP_DMA_P_CONFIG  0x%x\n", __func__,
+		    (pack_pattern << 8 | 0x3f | (1 << 25) | (3 << 19)
+		    | (1 << 7)));
+		writel(pack_pattern << 8 | 0x3f | (1 << 25) | (3 << 19)
+		    | (1 << 7) , MDP_DMA_P_CONFIG);
+		ystride = 2;
+	} else {
+#endif
+		dprintf(INFO, "%s MDP_DMA_P_CONFIG 0x1800bf\n", __func__);
+		writel(0x1800bf, MDP_DMA_P_CONFIG);	/* rgb888 */
+#if DSI2DPI_TC358762
+	}
+#endif
 
 	writel(0x00000000, MDP_DMA_P_OUT_XY);
 	writel(pinfo->yres << 16 | pinfo->xres, MDP_DMA_P_SIZE);
