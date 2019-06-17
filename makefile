@@ -104,6 +104,10 @@ GENERATED := $(CONFIGHEADER)
 # anything added to DEFINES will be put into $(BUILDDIR)/config.h
 DEFINES := LK=1				
 
+ifeq ($(DSI2DPI_TC358762), 1)
+    CFLAGS += -DDSI2DPI_TC358762
+endif
+
 # Anything added to SRCDEPS will become a dependency of every source file in the system.
 # Useful for header files that may be included by one or more source files.
 SRCDEPS := $(CONFIGHEADER)
