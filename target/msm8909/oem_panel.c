@@ -50,6 +50,11 @@
 #include "include/panel_auo_400p_cmd.h"
 #include "include/panel_auo_390p_cmd.h"
 
+#if DSI2DPI_TC358762
+#include "include/mipi_tc358762_dsi2dpi.h"
+#include "include/panel_st7789v_video.h"
+#endif
+
 #define DISPLAY_MAX_PANEL_DETECTION 0
 #define ILI9806E_FWVGA_VIDEO_PANEL_POST_INIT_DELAY 68
 
@@ -62,6 +67,9 @@ enum {
 
 enum {
 	BG_WTP = 0x0F,
+#if DSI2DPI_TC358762
+	LR3001 = 0x16,
+#endif
 };
 /*---------------------------------------------------------------------------*/
 /* static panel selection variable                                           */
@@ -81,6 +89,9 @@ enum {
 	AUO_CX_QVGA_CMD_PANEL,
 	AUO_400P_CMD_PANEL,
 	AUO_390P_CMD_PANEL,
+#if DSI2DPI_TC358762
+	ST7789V_VIDEO_PANEL,
+#endif
 	UNKNOWN_PANEL
 };
 
@@ -101,6 +112,9 @@ static struct panel_list supp_panels[] = {
 	{"auo_cx_qvga_cmd", AUO_CX_QVGA_CMD_PANEL},
 	{"auo_400p_cmd", AUO_400P_CMD_PANEL},
 	{"auo_390p_cmd", AUO_390P_CMD_PANEL},
+#if DSI2DPI_TC358762
+	{"st7789v_video", ST7789V_VIDEO_PANEL},
+#endif
 };
 
 static uint32_t panel_id;
@@ -432,6 +446,34 @@ static int init_panel_data(struct panel_struct *panelstruct,
 					= AUO_390P_CMD_OFF_COMMAND;
 		memcpy(phy_db->timing, auo_390p_cmd_timings, TIMING_SIZE);
 		break;
+#if DSI2DPI_TC358762
+	case ST7789V_VIDEO_PANEL:
+		panelstruct->paneldata    = &st7789v_video_panel_data;
+		panelstruct->panelres     = &st7789v_video_panel_res;
+		panelstruct->color        = &st7789v_video_color;
+		panelstruct->videopanel   = &st7789v_video_panel;
+		panelstruct->commandpanel = &st7789v_video_command_panel;
+		panelstruct->state        = &st7789v_video_state;
+		panelstruct->laneconfig   = &st7789v_video_lane_config;
+		panelstruct->paneltiminginfo
+					= &st7789v_video_timing_info;
+		panelstruct->panelresetseq
+					= &st7789v_video_reset_seq;
+		panelstruct->backlightinfo = &st7789v_video_backlight;
+		pinfo->mipi.panel_on_cmds
+					= st7789v_video_on_command;
+		pinfo->mipi.num_of_panel_on_cmds
+					= ST7789V_VIDEO_ON_COMMAND;
+		pinfo->mipi.panel_off_cmds
+					= st7789v_video_off_command;
+		pinfo->mipi.num_of_panel_off_cmds
+					= ST7789V_VIDEO_OFF_COMMAND;
+		memcpy(phy_db->timing,
+				st7789v_video_timings, TIMING_SIZE);
+		pinfo->mipi.signature = ST7789V_VIDEO_SIGNATURE;
+		tc358762_init(panelstruct->panelresetseq);
+		break;
+#endif
 	case UNKNOWN_PANEL:
 	default:
 		memset(panelstruct, 0, sizeof(struct panel_struct));
@@ -486,6 +528,11 @@ int oem_panel_select(const char *panel_name, struct panel_struct *panelstruct,
 		case BG_WTP:
 			panel_id = AUO_390P_CMD_PANEL;
 			break;
+#if DSI2DPI_TC358762
+		case LR3001:
+			panel_id = ST7789V_VIDEO_PANEL;
+			break;
+#endif
 		default:
 			panel_id = HX8394D_720P_VIDEO_PANEL;
 			break;
