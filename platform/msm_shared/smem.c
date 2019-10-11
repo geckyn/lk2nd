@@ -201,6 +201,9 @@ size_t smem_get_hw_platform_name(void *buf, uint32 buf_size)
 	}
 
 	hw_id = board_hardware_id();
+	if (hw_id >= ARRAY_SIZE(hw_platform))
+		hw_id = HW_PLATFORM_UNKNOWN;
+
 	if (buf_size < strlen(hw_platform[hw_id]) + 1)
 		return 1;
 
