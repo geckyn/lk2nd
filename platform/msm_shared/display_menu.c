@@ -106,7 +106,8 @@ static char *fastboot_option_menu[] = {
 		[1] = "Restart bootloader\n",
 		[2] = "Recovery mode\n",
 		[3] = "Power off\n",
-		[4] = "Boot to FFBM\n"};
+		[4] = "Boot to FFBM\n",
+		[5] = "Blank\n"};
 
 static int big_factor = 2;
 static int common_factor = 1;
@@ -391,7 +392,11 @@ void display_fastboot_menu_renew(struct select_msg_info *fastboot_msg_info)
 		case 4:
 			msg_type = FBCON_COMMON_MSG;
 			break;
+		case 5:
+			fbcon_flush();
+			goto end;
 	}
+
 	fbcon_draw_line(msg_type);
 	display_fbcon_menu_message(fastboot_option_menu[option_index],
 		msg_type, big_factor);
@@ -441,6 +446,7 @@ void display_fastboot_menu_renew(struct select_msg_info *fastboot_msg_info)
 		is_device_locked()? "locked":"unlocked");
 	display_fbcon_menu_message(msg, FBCON_RED_MSG, common_factor);
 
+end:
 	fastboot_msg_info->info.msg_type = DISPLAY_MENU_FASTBOOT;
 	fastboot_msg_info->info.option_num = len;
 	fastboot_msg_info->info.option_index = option_index;
@@ -513,7 +519,7 @@ void display_fastboot_menu()
 	 * The menu is switched base on the option index
 	 * Initialize the option index and last_msg_type
 	 */
-	fastboot_menu_msg_info->info.option_index = 0;
+	fastboot_menu_msg_info->info.option_index = (lk2nd_dev.dev_mode) ? 5 : 0;
 	fastboot_menu_msg_info->last_msg_type =
 		fastboot_menu_msg_info->info.msg_type;
 
