@@ -1198,6 +1198,7 @@ BUF_DMA_ALIGN(buf, BOOT_IMG_MAX_PAGE_SIZE); //Equal to max-supported pagesize
 
 static void verify_signed_bootimg(uint32_t bootimg_addr, uint32_t bootimg_size)
 {
+#ifndef DISABLE_CRYPTO
 	int ret;
 
 #if !VERIFIED_BOOT
@@ -1308,6 +1309,7 @@ static void verify_signed_bootimg(uint32_t bootimg_addr, uint32_t bootimg_size)
 		ASSERT(0);
 	#endif
 	}
+#endif
 #endif
 }
 
